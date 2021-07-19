@@ -20,6 +20,6 @@ To finetune the models, please use the "fine_tune_moco_chestxray.py" and "fine_t
 
 To probe the intermediate layers of the model, please use the "probing_moco_chestxray.py" and "probing_moco_hist.py" for NIH chest xray and Breast cancer histopathology data, respectively. For the diabetic retinopathy dataset, please write the code for probing the intermediate layers using/similar to "probing_moco_chestxray.py"
 
-5.Feature reuse analysis:
+5. Feature reuse analysis:
 
-To compute the feature similarity, perform the inference using your model, store the intermediate layer representations and using "CKA.py" for computing the kernel similarity with sigma = 0.8.
+To compute the feature similarity, perform the inference using your model, store the intermediate layer representations and use "CKA.py" for computing the kernel similarity with sigma = 0.8.
