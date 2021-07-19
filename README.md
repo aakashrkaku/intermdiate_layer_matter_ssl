@@ -1,4 +1,4 @@
-# Intermdiate layer matter ssl
+# Intermdiate layer matters - SSL
 The official repository for "Intermediate Layers Matter in Momentum Contrastive Self Supervised Learning" paper.
 
 1. Download the data for the experiments:
