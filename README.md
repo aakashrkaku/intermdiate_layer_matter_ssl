@@ -7,6 +7,7 @@ The official repository for "Intermediate Layers Matter in Momentum Contrastive 
 1. Bringing intermediate layers’ representations of two augmented versions of an image closer together helps to improve the momentum contrastive (MoCo) method
 2. We show this improvement for two loss functions: the mean squared error (MSE) and Barlow Twin’s loss between the intermediate layer representations; and three datasets: NIH-Chest Xrays, Breast Cancer Histopathology, and Diabetic Retinopathy 
 3. Improved MoCo has large gains (~5%) in the performance especially when we are in a low-labeled regime (1% data is labeled)
+![image](https://user-images.githubusercontent.com/32464452/143272665-ba63078f-2597-48c4-872f-10ebc66603c2.png)
 4. Improved MoCo learns meaningful features earlier in the model and also has high feature reuse.
 
 ## Use the code to reproduce results
