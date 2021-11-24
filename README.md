@@ -1,6 +1,8 @@
 # Intermdiate layer matters - SSL
 The official repository for "Intermediate Layers Matter in Momentum Contrastive Self Supervised Learning" paper [[pdf](https://openreview.net/pdf?id=M5j42PvY65V)].
 
+![image](https://user-images.githubusercontent.com/32464452/143272414-231278ab-a114-4372-9ace-f0beba8bf6bb.png)
+
 ## Summary of the paper
 1. Bringing intermediate layers’ representations of two augmented versions of an image closer together helps to improve the momentum contrastive (MoCo) method
 2. We show this improvement for two loss functions: the mean squared error (MSE) and Barlow Twin’s loss between the intermediate layer representations; and three datasets: NIH-Chest Xrays, Breast Cancer Histopathology, and Diabetic Retinopathy 
