@@ -9,6 +9,7 @@ The official repository for "Intermediate Layers Matter in Momentum Contrastive 
 3. Improved MoCo has large gains (~5%) in the performance especially when we are in a low-labeled regime (1% data is labeled)
 ![image](https://user-images.githubusercontent.com/32464452/143272665-ba63078f-2597-48c4-872f-10ebc66603c2.png)
 4. Improved MoCo learns meaningful features earlier in the model and also has high feature reuse.
+![image](https://user-images.githubusercontent.com/32464452/143272879-67cde104-559d-4e1f-a074-d7e3feddb9d8.png)
 
 ## Use the code to reproduce results
 1. Download the data for the experiments:
