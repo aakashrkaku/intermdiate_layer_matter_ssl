@@ -1,5 +1,5 @@
 # Intermdiate layer matters - SSL
-The official repository for "Intermediate Layers Matter in Momentum Contrastive Self Supervised Learning" paper.
+The official repository for "Intermediate Layers Matter in Momentum Contrastive Self Supervised Learning" paper [[pdf](https://openreview.net/pdf?id=M5j42PvY65V)].
 
 1. Download the data for the experiments:
 
