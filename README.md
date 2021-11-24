@@ -34,3 +34,21 @@ To probe the intermediate layers of the model, please use the "probing_moco_ches
 5. Feature reuse analysis:
 
 To compute the feature similarity, perform the inference using your model, store the intermediate layer representations and use "CKA.py" for computing the kernel similarity with sigma = 0.8.
+
+## License and Contributing
+- This README is formatted based on [paperswithcode](https://github.com/paperswithcode/releasing-research-code).
+- Feel free to post issues via Github. 
+
+## Reference
+For technical details and full experimental results, please check [our paper](https://openreview.net/pdf?id=M5j42PvY65V).
+```
+@article{kaku2021intermediate,
+  title={Intermediate Layers Matter in Momentum Contrastive Self Supervised Learning},
+  author={Kaku, Aakash and Upadhya, Sahana and Razavian, Narges},
+  journal={Advances in Neural Information Processing Systems},
+  volume={34},
+  year={2021}
+}
+```
+## Contact
+Please contact ark576@nyu.edu if you have any question on the codes.
