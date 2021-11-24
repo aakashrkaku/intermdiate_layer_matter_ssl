@@ -6,7 +6,6 @@ The official repository for "Intermediate Layers Matter in Momentum Contrastive 
 2. We show this improvement for two loss functions: the mean squared error (MSE) and Barlow Twin’s loss between the intermediate layer representations; and three datasets: NIH-Chest Xrays, Breast Cancer Histopathology, and Diabetic Retinopathy 
 3. Improved MoCo has large gains (~5%) in the performance especially when we are in a low-labeled regime (1% data is labeled)
 4. Improved MoCo learns meaningful features earlier in the model and also has high feature reuse.
-![image](https://user-images.githubusercontent.com/32464452/143271866-a2bb183c-444a-4be1-a8d2-6a2b99d3913c.png)
 
 
 1. Download the data for the experiments:
