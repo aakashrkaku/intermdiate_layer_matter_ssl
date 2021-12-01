@@ -24,7 +24,7 @@ from resnet_new_bt import resnet50
 from typing import Union
 from pl_bolts.metrics import mean, precision_at_k
 from pytorch_lightning.metrics import Metric
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import f1_score, roc_auc_score
 import argparse
 import utils
 
@@ -570,7 +570,7 @@ class New_model(pl.LightningModule):
     def __init__(self,from_scratch = True,mse_btwin = False, ckpt_path = None, only_ll = False):
         super().__init__()
         self.from_scratch = from_scratch
-        self.conv = resnet.resnet50(num_classes=128)
+        self.conv = resnet_new_bt.resnet50(num_classes=128)
         self.only_ll = only_ll
         if not self.from_scratch:
             if mse_btwin == 'moco-mse' or mse_btwin == 'moco-btwin':
@@ -587,12 +587,12 @@ class New_model(pl.LightningModule):
     def forward(self, x):
         if self.only_ll:
             with torch.no_grad():
-                feat = self.conv(x)
+                feat, (x1,x2,x3,x4) = self.conv(x)
         else:
-            feat = self.conv(x)
+            feat, (x1,x2,x3,x4) = self.conv(x)
         x = self.final_fc(feat)
         x = torch.sigmoid(x)
-        return x, feat
+        return x, (x1,x2,x3,x4)
     
     def bce_loss(self, logits, labels):
         loss = nn.BCELoss()
@@ -620,6 +620,22 @@ class New_model(pl.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
         return optimizer
     
+def bootstrap_performance(labels, logits, num_iters = 500):
+    size = labels.shape[0]
+    all_mac_aucs = []
+    idx = np.arange(size) 
+    for i in range(num_iters):
+        sel_idx = np.random.choice(idx,size=size)
+        new_logits = logits[sel_idx,:]
+        new_labels = labels[sel_idx,:]
+        all_aucs = []
+        for j in range(new_labels.shape[1]):
+            all_aucs.append(roc_auc_score(new_labels[:,j],new_logits[:,j]))
+        all_mac_aucs.append(all_aucs)
+    mean_score = np.mean(all_mac_aucs)
+    std_score = np.std(all_mac_aucs)
+    return mean_score, mean_score - 1.96*std_score/num_iters**0.5, mean_score + 1.96*std_score/num_iters**0.5
+    
 def main(args):
     dm = Chest_Xray_DM(data_path = args.data_path,num_workers=40,\
                    batch_size=args.batch_size, train_frac = args.data_size) 
@@ -645,6 +661,7 @@ def main(args):
     if args.only_ll:
         filename += '-ll'
     filename += '-{epoch:02d}-{val_auc_score:.3f}'
+    
     checkpoint_callback = ModelCheckpoint(
     monitor='val_auc_score',
     dirpath=save_path,
@@ -658,9 +675,45 @@ def main(args):
     else:
         trainer = pl.Trainer(default_root_dir=args.save_path,\
                          callbacks=[checkpoint_callback])
-    trainer.fit(finetune_model, dm.train_dataloader(),dm.val_dataloader())
+        
+    if not args.no_training:
+        trainer.fit(finetune_model, dm.train_dataloader(),dm.val_dataloader())
     
-
+    # Inference
+    all_feats_l1 = []
+    all_feats_l2 = []
+    all_feats_l3 = []
+    all_feats_l4 = []
+    all_ys=[]
+    all_logits = []
+    for i in dm.test_dataloader():
+        logit,feats = model(i[0].to(device))
+        all_ys.append(i[1].numpy())
+        all_logits.append(logit.data.cpu().numpy())
+        all_feats_l1.append(feats[0].data.cpu().numpy())
+        all_feats_l2.append(feats[1].data.cpu().numpy())
+        all_feats_l3.append(feats[2].data.cpu().numpy())
+        all_feats_l4.append(feats[3].data.cpu().numpy())
+        
+    all_feats_l1 = np.concatenate(all_feats_l1)
+    all_feats_l2 = np.concatenate(all_feats_l2)
+    all_feats_l3 = np.concatenate(all_feats_l3)
+    all_feats_l4 = np.concatenate(all_feats_l4)
+    all_ys = np.concatenate(all_ys)
+    all_logits = np.concatenate(all_logits)
+    
+    mean_auc, ll_auc, ul_auc = bootstrap_performance(all_ys, all_logits)
+    
+    if args.no_training:
+        dict_name = save_path+filename+'_not_trained_preds.p'
+    else:
+        dict_name = save_path+filename+'_preds.p'
+    
+    pickling({'l1':all_feats_l1,'l2':all_feats_l2,'l3':all_feats_l3,'l4':all_feats_l4,\
+          'logits':all_logits,'ys':all_ys, 'mean_auc': mean_auc, 'll_auc': ll_auc, 'ul_auc':ul_auc },dict_name)
+    
+    
+    
 def str2bool(v):
     if isinstance(v, bool):
         return v
@@ -687,6 +740,7 @@ def get_args():
     parser.add_argument('--from_scratch', type=str2bool, nargs='?',const=True, default=False, help = "if true then a fully supervised model with random intialization will be trained")
     parser.add_argument('--only_ll', type=str2bool, nargs='?',const=True, default=False, help = "if true, then it will only train the last linear layer (rest of the network would be freezed)")
     parser.add_argument("--ckpt_path", type=str, help = "path to the ssl check point model used of intializing wts. of the model")
+    parser.add_argument('--no_training', type=str2bool, nargs='?',const=True, default=False, help = "if true, then models would not be fine-tuned")
     
     # Parse twice as model arguments are not known the first time
     parser = utils.add_logging_arguments(parser)

@@ -338,7 +338,7 @@ class Moco_v2(pl.LightningModule):
         """
 
         # compute query features
-        q,q1,q2,q3,q4 = self.encoder_q(img_q)  # queries: NxC
+        q,(q1,q2,q3,q4) = self.encoder_q(img_q)  # queries: NxC
         q = nn.functional.normalize(q, dim=1)
 
         # compute key features
@@ -349,7 +349,7 @@ class Moco_v2(pl.LightningModule):
             if self.trainer.use_ddp or self.trainer.use_ddp2:
                 img_k, idx_unshuffle = self._batch_shuffle_ddp(img_k)
 
-            k,k1,k2,k3,k4 = self.encoder_k(img_k)  # keys: NxC
+            k,(k1,k2,k3,k4) = self.encoder_k(img_k)  # keys: NxC
             k = nn.functional.normalize(k, dim=1)
 
             # undo shuffle

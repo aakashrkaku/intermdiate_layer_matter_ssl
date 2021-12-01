@@ -257,7 +257,7 @@ class ResNet(nn.Module):
         x = torch.flatten(x, 1)
         x = self.fc(x)
 
-        return x,x1_n, x2_n, x3_n, x4_n
+        return x,(x1_n, x2_n, x3_n, x4_n)
 
     def forward(self, x: Tensor) -> Tensor:
         return self._forward_impl(x)

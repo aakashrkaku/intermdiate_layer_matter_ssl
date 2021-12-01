@@ -24,7 +24,7 @@ from resnet_new_bt import resnet50
 from typing import Union
 from pl_bolts.metrics import mean, precision_at_k
 from pytorch_lightning.metrics import Metric
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import f1_score, roc_auc_score
 import argparse
 import utils
 
@@ -545,7 +545,7 @@ class New_model(pl.LightningModule):
     def __init__(self,from_scratch = True,mse_btwin = False, ckpt_path = None, only_ll = False):
         super().__init__()
         self.from_scratch = from_scratch
-        self.conv = resnet.resnet50(num_classes=128)
+        self.conv = resnet_new_bt.resnet50(num_classes=128)
         self.only_ll = only_ll
         if not self.from_scratch:
             if mse_btwin == 'moco-mse' or mse_btwin == 'moco-btwin':
@@ -562,12 +562,12 @@ class New_model(pl.LightningModule):
     def forward(self, x):
         if self.only_ll:
             with torch.no_grad():
-                feat = self.conv(x)
+                feat, (x1,x2,x3,x4) = self.conv(x)
         else:
-            feat = self.conv(x)
+            feat, (x1,x2,x3,x4) = self.conv(x)
         x = self.final_fc(feat)
         x = torch.log_softmax(x, dim=1)
-        return x, feat
+        return x, (x1,x2,x3,x4)
     
     def cross_entropy_loss(self, logits, labels):
         return F.nll_loss(logits, labels)
@@ -593,6 +593,17 @@ class New_model(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
         return optimizer
+    
+def bootstrap_performance(targets,preds,average_type = 'macro',num_sets = 500):
+    all_scores = []
+    size = targets.shape[0]
+    idx = np.arange(size) 
+    for i in range(num_sets):
+        sel_idx = np.random.choice(idx,size=size)
+        all_scores.append(f1_score(targets[sel_idx],preds[sel_idx],average = average_type))
+    mean_score = np.mean(all_scores)
+    std_score = np.std(all_scores)
+    return mean_score, mean_score - 1.96*std_score/num_sets**0.5, mean_score + 1.96*std_score/num_sets**0.5
     
 def main(args):
     dm = Chest_Xray_DM(data_path = args.data_path,num_workers=40,\
@@ -634,7 +645,42 @@ def main(args):
     else:
         trainer = pl.Trainer(default_root_dir=args.save_path,\
                          callbacks=[checkpoint_callback])
-    trainer.fit(finetune_model, dm.train_dataloader(),dm.val_dataloader())
+        
+    if not args.no_training:
+        trainer.fit(finetune_model, dm.train_dataloader(),dm.val_dataloader())
+    
+    # Inference
+    all_feats_l1 = []
+    all_feats_l2 = []
+    all_feats_l3 = []
+    all_feats_l4 = []
+    all_ys=[]
+    all_logits = []
+    for i in dm.test_dataloader():
+        logit,feats = model(i[0].to(device))
+        all_ys.append(i[1].numpy())
+        all_logits.append(logit.data.cpu().numpy())
+        all_feats_l1.append(feats[0].data.cpu().numpy())
+        all_feats_l2.append(feats[1].data.cpu().numpy())
+        all_feats_l3.append(feats[2].data.cpu().numpy())
+        all_feats_l4.append(feats[3].data.cpu().numpy())
+        
+    all_feats_l1 = np.concatenate(all_feats_l1)
+    all_feats_l2 = np.concatenate(all_feats_l2)
+    all_feats_l3 = np.concatenate(all_feats_l3)
+    all_feats_l4 = np.concatenate(all_feats_l4)
+    all_ys = np.concatenate(all_ys)
+    all_logits = np.concatenate(all_logits)
+    
+    mean_auc, ll_auc, ul_auc = bootstrap_performance(all_ys, all_logits)
+    
+    if args.no_training:
+        dict_name = save_path+filename+'_not_trained_preds.p'
+    else:
+        dict_name = save_path+filename+'_preds.p'
+    
+    pickling({'l1':all_feats_l1,'l2':all_feats_l2,'l3':all_feats_l3,'l4':all_feats_l4,\
+          'logits':all_logits,'ys':all_ys, 'mean_auc': mean_auc, 'll_auc': ll_auc, 'ul_auc':ul_auc },dict_name)
     
 
 def str2bool(v):
@@ -663,6 +709,7 @@ def get_args():
     parser.add_argument('--from_scratch', type=str2bool, nargs='?',const=True, default=False, help = "if true then a fully supervised model with random intialization will be trained")
     parser.add_argument('--only_ll', type=str2bool, nargs='?',const=True, default=False, help = "if true, then it will only train the last linear layer (rest of the network would be freezed)")
     parser.add_argument("--ckpt_path", type=str, help = "path to the ssl check point model used of intializing wts. of the model")
+    parser.add_argument('--no_training', type=str2bool, nargs='?',const=True, default=False, help = "if true, then models would not be fine-tuned")
     
     # Parse twice as model arguments are not known the first time
     parser = utils.add_logging_arguments(parser)
