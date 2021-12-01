@@ -21,11 +21,9 @@ Diabetic Retinopathy dataset: https://www.kaggle.com/c/diabetic-retinopathy-dete
 
 ## Code for each dataset
 Please read the readme for each dataset to execute the code and reproduce the results.
-- [NIH chest-xray dataset] (./chest_xray/Readme.md)
-- [Breast cancer histopathology dataset] (./breast_cancer_histopathology/Readme.md)
-- [Diabetic Retinopathy dataset] (./diabetic_retinopathy/Readme.md)
-Breast cancer histopathology dataset: https://www.kaggle.com/paultimothymooney/breast-histopathology-images
-Diabetic Retinopathy dataset: https://www.kaggle.com/c/diabetic-retinopathy-detection/data
+- [NIH chest-xray dataset](./chest_xray/Readme.md)
+- [Breast cancer histopathology dataset](./breast_cancer_histopathology/Readme.md)
+- [Diabetic Retinopathy dataset](./diabetic_retinopathy/Readme.md)
 
 ## License and Contributing
 - This README is formatted based on [paperswithcode](https://github.com/paperswithcode/releasing-research-code).
