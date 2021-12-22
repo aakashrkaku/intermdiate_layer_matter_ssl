@@ -3,7 +3,9 @@
 - To install necessary python packages, run `pip install -r requirements.txt`.
 
 ### Data
-- Please download the data before running the code
+- Please download and pre-process the data before running the code.
+- For pre-processing the data: we adopted the methodology given in "Reproduction study using public data of: Development and validation of a deep learning algorithm for detection of diabetic retinopathy in retinal fundus photographs" paper. The code for same can be found [here](https://github.com/mikevoets/jama16-retina-replication). 
+- Specifically, we followed steps 1,2 and 3 of pre-processing the Eyepacs dataset given [here](https://github.com/mikevoets/jama16-retina-replication/blob/master/README.md).
 
 ### Training SSL models
 - Code for training SSL models are in the following file: [`ssl_mocov2_only.py`](./ssl_mocov2_only.py) for MoCo-only model, [`ssl_mocov2_mse.py`](./ssl_mocov2_mse.py) for MoCo + MSE, and [`ssl_mocov2_bt.py`](./ssl_mocov2_bt.py) for MoCo + Barlow Twins
