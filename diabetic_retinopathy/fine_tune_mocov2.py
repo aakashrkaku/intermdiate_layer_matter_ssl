@@ -16,23 +16,33 @@ import numpy as np
 import os
 from pytorch_lightning import LightningDataModule
 from torchvision import datasets, models, transforms
-from torch.utils.data import DataLoader, Dataset, random_split
+from torch.utils.data import DataLoader, Dataset, random_split, Subset
 from torch.utils.data.sampler import WeightedRandomSampler, Sampler
 import torch
 from torchvision.models import resnet
 from pytorch_lightning.callbacks import ModelCheckpoint
-from resnet_new import resnet50
+# from resnet_new import resnet50
 from resnet_new_bt import resnet50
+import resnet_new_bt
 from typing import Union
 from pl_bolts.metrics import mean, precision_at_k
 from pytorch_lightning.metrics import Metric
 from sklearn.metrics import f1_score, roc_auc_score
 import argparse
-import utils
+# import utils
 from collections import Counter
 import torch.distributed as dist
 import math
 import random
+import pickle
+
+def pickling(file, path):
+    pickle.dump(file, open(path, 'wb'))
+
+
+def unpickling(path):
+    file_return = pickle.load(open(path, 'rb'))
+    return file_return
 
 
 if torch.cuda.is_available():
@@ -41,12 +51,13 @@ else:
     device = 'cpu'
 
 class BaselineDataModule(pl.LightningDataModule):
-    def __init__(self, data_dir='../jama16-retina-replication/data/eyepacs/bin2/', batch_size=8, num_workers = 8):
+    def __init__(self, data_dir='../jama16-retina-replication/data/eyepacs/bin2/', batch_size=8, num_workers = 8, data_size = 1):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.dataset_sizes = {}
+        self.data_size = data_size
 
 #         num_train = 57146
 #         indices = list(range(num_train))
@@ -62,6 +73,13 @@ class BaselineDataModule(pl.LightningDataModule):
                     os.path.join(self.data_dir, 'train'), 
                     transform=self.train_transforms)
 #             self.train_dataset = custom_subset(t_dataset, self.train_idx)
+            if self.data_size < 1:
+                n = len(self.train_dataset)
+                idx = torch.arange(n)
+                np.random.shuffle(idx)
+                selected_idx = idx[:int(n*self.data_size)]
+                self.train_dataset = Subset(self.train_dataset,selected_idx)
+                print("Using {} fraction of the data set for training".format(self.data_size))
 
             self.val_dataset = datasets.ImageFolder(
                     os.path.join(self.data_dir, 'validation'), 
@@ -575,7 +593,7 @@ class AUC_SCR(Metric):
 
     def update(self, preds: torch.Tensor, targets: torch.Tensor):
 #         preds, targets = self._input_format(preds, targets)
-        assert preds.shape == targets.shape
+#         assert preds.shape == targets.shape
 
         self.pred.append(preds.cpu().detach().numpy())
         self.target.append(targets.cpu().detach().numpy())
@@ -589,11 +607,11 @@ class AUC_SCR(Metric):
         return auc_scr
     
 def get_macro_auc(target,pred):
-    num_classes = target.shape[1]
+#     num_classes = target.shape[1]
     all_aucs = []
-    for i in range(num_classes):
+    for i in range(1):
         try:
-            temp_auc = roc_auc_score(target[:,i],pred[:,i])
+            temp_auc = roc_auc_score(target,pred[:,1])
         except:
             temp_auc = np.nan
         all_aucs.append(temp_auc)
@@ -615,7 +633,7 @@ class New_model(pl.LightningModule):
             wts = backbone.encoder_q.state_dict()
             self.conv.load_state_dict(wts)
         self.conv.fc = nn.Identity()
-        self.final_fc = nn.Linear(2048,14)
+        self.final_fc = nn.Linear(2048,2)
         self.train_auc = AUC_SCR()
         self.valid_auc = AUC_SCR()
 
@@ -626,17 +644,17 @@ class New_model(pl.LightningModule):
         else:
             feat,(x1,x2,x3,x4) = self.conv(x)
         x = self.final_fc(feat)
-        x = torch.sigmoid(x)
+#         x = torch.sigmoid(x)
         return x, (x1,x2,x3,x4)
     
-    def bce_loss(self, logits, labels):
-        loss = nn.BCELoss()
+    def cel_loss(self, logits, labels):
+        loss = nn.CrossEntropyLoss()
         return loss(logits,labels)
 
     def training_step(self, train_batch, batch_idx):
-        x, y, _ = train_batch
+        x, y = train_batch
         logits,_ = self.forward(x)
-        loss = self.bce_loss(logits, y.float())
+        loss = self.cel_loss(logits, y.long())
         self.log('train_loss', loss)
         self.train_auc(logits, y)
         self.log('train_auc_score', self.train_auc, on_step=False, on_epoch=True)
@@ -644,9 +662,9 @@ class New_model(pl.LightningModule):
         return loss
 
     def validation_step(self, val_batch, batch_idx):
-        x, y, _ = val_batch
+        x, y = val_batch
         logits, _ = self.forward(x)
-        loss = self.bce_loss(logits, y.float())
+        loss = self.cel_loss(logits, y.long())
         self.log('val_loss', loss)
         self.valid_auc(logits, y)
         self.log('val_auc_score', self.valid_auc, on_step=False, on_epoch=True)
@@ -661,24 +679,34 @@ def bootstrap_performance(labels, logits, num_iters = 500):
     idx = np.arange(size) 
     for i in range(num_iters):
         sel_idx = np.random.choice(idx,size=size)
-        new_logits = logits[sel_idx,:]
-        new_labels = labels[sel_idx,:]
-        all_aucs = []
-        for j in range(new_labels.shape[1]):
-            all_aucs.append(roc_auc_score(new_labels[:,j],new_logits[:,j]))
-        all_mac_aucs.append(all_aucs)
+        new_logits = logits[sel_idx,1]
+        new_labels = labels[sel_idx]
+        all_mac_aucs.append(roc_auc_score(new_labels,new_logits))
     mean_score = np.mean(all_mac_aucs)
     std_score = np.std(all_mac_aucs)
     return mean_score, mean_score - 1.96*std_score/num_iters**0.5, mean_score + 1.96*std_score/num_iters**0.5
+
+def get_best_val_model(model_dir):
+    all_models = os.listdir(model_dir)
+    best_val_score = 0
+    best_model_name = ''
+    for i in all_models:
+        if '.ckpt' in i:
+            val_score = float(i.split('=')[-1][:-5])
+            if val_score > best_val_score:
+                best_val_score=val_score
+                best_model_name = i
+    return model_dir+best_model_name
     
 def main(args):
-    dm = BaselineDataModule(data_dir=args.data_dir, 
+    dm = BaselineDataModule(data_dir=args.data_path, 
                      batch_size = args.batch_size, 
-                     num_workers = 40)
-    
+                     num_workers = 40, data_size = args.data_size)
     dm.train_transforms = FTTrainTransformsDR(height=299)
     dm.val_transforms = FTEvalTransformsDR(height=299)
     dm.test_transforms = FTEvalTransformsDR(height=299)
+    dm.setup(stage = 'fit')
+    dm.setup(stage = 'test')
     
     
     save_path = args.save_path + str(args.data_size) + '/'
@@ -687,7 +715,7 @@ def main(args):
     
     
     if args.from_scratch:
-        filename = 'supervised-{epoch:02d}-{val_auc_score:.3f}'
+        filename = 'supervised'
     else:
         if args.mse_btwin == 'moco-mse' or args.mse_btwin == 'moco-btwin':
             filename = args.mse_btwin
@@ -708,15 +736,25 @@ def main(args):
     
     if torch.cuda.is_available():
         trainer = pl.Trainer(gpus=1,default_root_dir=args.save_path,\
-                         callbacks=[checkpoint_callback])
+                         callbacks=[checkpoint_callback],max_epochs=args.max_epochs)
     else:
         trainer = pl.Trainer(default_root_dir=args.save_path,\
-                         callbacks=[checkpoint_callback])
+                         callbacks=[checkpoint_callback],max_epochs=args.max_epochs)
         
     if not args.no_training:
         trainer.fit(finetune_model, dm.train_dataloader(),dm.val_dataloader())
     
     # Inference
+    print('Inference begins')
+    if not args.no_training:
+        best_val_model_name = get_best_val_model(save_path)
+        print('Loading {} model for inference'.format(best_val_model_name))
+        finetune_model.load_from_checkpoint(best_val_model_name)
+        finetune_model.to(device)
+        finetune_model.eval()
+    else:
+        finetune_model.to(device)
+        finetune_model.eval()
     all_feats_l1 = []
     all_feats_l2 = []
     all_feats_l3 = []
@@ -724,7 +762,7 @@ def main(args):
     all_ys=[]
     all_logits = []
     for i in dm.test_dataloader():
-        logit,feats = model(i[0].to(device))
+        logit,feats = finetune_model(i[0].to(device))
         all_ys.append(i[1].numpy())
         all_logits.append(logit.data.cpu().numpy())
         all_feats_l1.append(feats[0].data.cpu().numpy())
@@ -744,10 +782,11 @@ def main(args):
     if args.no_training:
         dict_name = save_path+filename+'_not_trained_preds.p'
     else:
-        dict_name = save_path+filename+'_preds.p'
+        dict_name = best_val_model_name[:-5]+'_preds.p'
     
     pickling({'l1':all_feats_l1,'l2':all_feats_l2,'l3':all_feats_l3,'l4':all_feats_l4,\
           'logits':all_logits,'ys':all_ys, 'mean_auc': mean_auc, 'll_auc': ll_auc, 'ul_auc':ul_auc },dict_name)
+    print('Inference finished')
     
 
 def str2bool(v):
@@ -765,24 +804,25 @@ def get_args():
 
     # Add data arguments
     parser.add_argument("--data-path", help="path to data directory", type=str)
-    parser.add_argument("--data_size", default=1, type=float, help="fraction of data, 1 means 100% and 0.01 means 1%")
+    parser.add_argument("--data-size", default=1, type=float, help="fraction of data, 1 means 100% and 0.01 means 1%")
     parser.add_argument("--batch-size", default=16, type=int, help="train batch size")
     
     # Add model arguments
-    parser.add_argument("--save_path", default='./lightning_logs/finetuning_model/',type=str, help = "path to directory for saving fine-tuned models")
-    parser.add_argument("--file_extension", default=None, type=str, help = "any file extensions you want to add to the model saving file name")
+    parser.add_argument("--save-path", default='./lightning_logs/finetuning_model/',type=str, help = "path to directory for saving fine-tuned models")
+    parser.add_argument("--file-extension", default=None, type=str, help = "any file extensions you want to add to the model saving file name")
     
-    parser.add_argument("--mse_btwin", default=None, type=str, help = "could be one of 'moco-mse', 'moco-btwin' or 'moco-only'")
-    parser.add_argument('--from_scratch', type=str2bool, nargs='?',const=True, default=False, help = "if true then a fully supervised model with random intialization will be trained")
-    parser.add_argument('--only_ll', type=str2bool, nargs='?',const=True, default=False, help = "if true, then it will only train the last linear layer (rest of the network would be freezed)")
-    parser.add_argument("--ckpt_path", type=str, help = "path to the ssl check point model used of intializing wts. of the model")
-    parser.add_argument('--no_training', type=str2bool, nargs='?',const=True, default=False, help = "if true, then models would not be fine-tuned")
+    parser.add_argument("--mse-btwin", default=None, type=str, help = "could be one of 'moco-mse', 'moco-btwin' or 'moco-only'")
+    parser.add_argument('--from-scratch', type=str2bool, nargs='?',const=True, default=False, help = "if true then a fully supervised model with random intialization will be trained")
+    parser.add_argument('--only-ll', type=str2bool, nargs='?',const=True, default=False, help = "if true, then it will only train the last linear layer (rest of the network would be freezed)")
+    parser.add_argument("--ckpt-path", type=str, help = "path to the ssl check point model used of intializing wts. of the model")
+    parser.add_argument('--no-training', type=str2bool, nargs='?',const=True, default=False, help = "if true, then models would not be fine-tuned")
+    parser.add_argument('--max-epochs',default=100, type=int, help="Max number of epochs")
     
     # Parse twice as model arguments are not known the first time
-    parser = utils.add_logging_arguments(parser)
-    args, _ = parser.parse_known_args()
+#     parser = utils.add_logging_arguments(parser)
+#     args, _ = parser.parse_known_args()
     # models.MODEL_REGISTRY[args.model]
-    # args = parser.parse_args()
+    args = parser.parse_args()
     return args
 
 

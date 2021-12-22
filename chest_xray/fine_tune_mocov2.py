@@ -14,7 +14,7 @@ from pytorch_lightning.metrics import FBeta
 import torch
 import numpy as np
 from pytorch_lightning import LightningDataModule
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, random_split, Subset
 from chest_xray_supervised import Chest_Xray_Supervised
 import torch
 from torchvision.models import resnet
@@ -26,7 +26,16 @@ from pl_bolts.metrics import mean, precision_at_k
 from pytorch_lightning.metrics import Metric
 from sklearn.metrics import f1_score, roc_auc_score
 import argparse
-import utils
+import pickle
+import resnet_new_bt
+
+def pickling(file, path):
+    pickle.dump(file, open(path, 'wb'))
+
+
+def unpickling(path):
+    file_return = pickle.load(open(path, 'rb'))
+    return file_return
 
 if torch.cuda.is_available():
     device = 'cuda'
@@ -56,6 +65,7 @@ class Chest_Xray_DM(LightningDataModule):
                                                     train = True, train_frac = self.train_frac)
         self.val_dataset = Chest_Xray_Supervised(self.data_path, 'chest_xray_14_val_list.txt')
         self.test_dataset = Chest_Xray_Supervised(self.data_path, 'chest_xray_14_test_list.txt')
+        
 
 #         self.train, self.val, self.test = load_datasets()
 #         self.train_dims = self.train_dataset.next_batch.size()
@@ -635,6 +645,18 @@ def bootstrap_performance(labels, logits, num_iters = 500):
     mean_score = np.mean(all_mac_aucs)
     std_score = np.std(all_mac_aucs)
     return mean_score, mean_score - 1.96*std_score/num_iters**0.5, mean_score + 1.96*std_score/num_iters**0.5
+
+def get_best_val_model(model_dir):
+    all_models = os.listdir(model_dir)
+    best_val_score = 0
+    best_model_name = ''
+    for i in all_models:
+        if '.ckpt' in i:
+            val_score = float(i.split('=')[-1][:-5])
+            if val_score > best_val_score:
+                best_val_score=val_score
+                best_model_name = i
+    return model_dir+best_model_name
     
 def main(args):
     dm = Chest_Xray_DM(data_path = args.data_path,num_workers=40,\
@@ -649,7 +671,7 @@ def main(args):
     
     
     if args.from_scratch:
-        filename = 'supervised-{epoch:02d}-{val_auc_score:.3f}'
+        filename = 'supervised'
     else:
         if args.mse_btwin == 'moco-mse' or args.mse_btwin == 'moco-btwin':
             filename = args.mse_btwin
@@ -671,15 +693,25 @@ def main(args):
     
     if torch.cuda.is_available():
         trainer = pl.Trainer(gpus=1,default_root_dir=args.save_path,\
-                         callbacks=[checkpoint_callback])
+                         callbacks=[checkpoint_callback], max_epochs = args.max_epochs)
     else:
         trainer = pl.Trainer(default_root_dir=args.save_path,\
-                         callbacks=[checkpoint_callback])
+                         callbacks=[checkpoint_callback], max_epochs = args.max_epochs)
         
     if not args.no_training:
         trainer.fit(finetune_model, dm.train_dataloader(),dm.val_dataloader())
     
     # Inference
+    print('Inference begins')
+    if not args.no_training:
+        best_val_model_name = get_best_val_model(save_path)
+        print('Loading {} model for inference'.format(best_val_model_name))
+        finetune_model.load_from_checkpoint(best_val_model_name)
+        finetune_model.to(device)
+        finetune_model.eval()
+    else:
+        finetune_model.to(device)
+        finetune_model.eval()
     all_feats_l1 = []
     all_feats_l2 = []
     all_feats_l3 = []
@@ -687,7 +719,7 @@ def main(args):
     all_ys=[]
     all_logits = []
     for i in dm.test_dataloader():
-        logit,feats = model(i[0].to(device))
+        logit,feats = finetune_model(i[0].to(device))
         all_ys.append(i[1].numpy())
         all_logits.append(logit.data.cpu().numpy())
         all_feats_l1.append(feats[0].data.cpu().numpy())
@@ -707,11 +739,11 @@ def main(args):
     if args.no_training:
         dict_name = save_path+filename+'_not_trained_preds.p'
     else:
-        dict_name = save_path+filename+'_preds.p'
+        dict_name = best_val_model_name[:-5]+'_preds.p'
     
     pickling({'l1':all_feats_l1,'l2':all_feats_l2,'l3':all_feats_l3,'l4':all_feats_l4,\
           'logits':all_logits,'ys':all_ys, 'mean_auc': mean_auc, 'll_auc': ll_auc, 'ul_auc':ul_auc },dict_name)
-    
+    print('Inference finished')
     
     
 def str2bool(v):
@@ -729,24 +761,25 @@ def get_args():
 
     # Add data arguments
     parser.add_argument("--data-path", help="path to data directory", type=str)
-    parser.add_argument("--data_size", default=1, type=float, help="fraction of data, 1 means 100% and 0.01 means 1%")
+    parser.add_argument("--data-size", default=1, type=float, help="fraction of data, 1 means 100% and 0.01 means 1%")
     parser.add_argument("--batch-size", default=16, type=int, help="train batch size")
     
     # Add model arguments
-    parser.add_argument("--save_path", default='./lightning_logs/finetuning_model/',type=str, help = "path to directory for saving fine-tuned models")
-    parser.add_argument("--file_extension", default=None, type=str, help = "any file extensions you want to add to the model saving file name")
+    parser.add_argument("--save-path", default='./lightning_logs/finetuning_model/',type=str, help = "path to directory for saving fine-tuned models")
+    parser.add_argument("--file-extension", default=None, type=str, help = "any file extensions you want to add to the model saving file name")
     
-    parser.add_argument("--mse_btwin", default=None, type=str, help = "could be one of 'moco-mse', 'moco-btwin' or 'moco-only'")
-    parser.add_argument('--from_scratch', type=str2bool, nargs='?',const=True, default=False, help = "if true then a fully supervised model with random intialization will be trained")
-    parser.add_argument('--only_ll', type=str2bool, nargs='?',const=True, default=False, help = "if true, then it will only train the last linear layer (rest of the network would be freezed)")
-    parser.add_argument("--ckpt_path", type=str, help = "path to the ssl check point model used of intializing wts. of the model")
-    parser.add_argument('--no_training', type=str2bool, nargs='?',const=True, default=False, help = "if true, then models would not be fine-tuned")
+    parser.add_argument("--mse-btwin", default=None, type=str, help = "could be one of 'moco-mse', 'moco-btwin' or 'moco-only'")
+    parser.add_argument('--from-scratch', type=str2bool, nargs='?',const=True, default=False, help = "if true then a fully supervised model with random intialization will be trained")
+    parser.add_argument('--only-ll', type=str2bool, nargs='?',const=True, default=False, help = "if true, then it will only train the last linear layer (rest of the network would be freezed)")
+    parser.add_argument("--ckpt-path", type=str, help = "path to the ssl check point model used of intializing wts. of the model")
+    parser.add_argument('--no-training', type=str2bool, nargs='?',const=True, default=False, help = "if true, then models would not be fine-tuned")
+    parser.add_argument("--max-epochs", default=100, type=int, help="Max epochs")
     
     # Parse twice as model arguments are not known the first time
-    parser = utils.add_logging_arguments(parser)
-    args, _ = parser.parse_known_args()
+#     parser = utils.add_logging_arguments(parser)
+#     args, _ = parser.parse_known_args()
     # models.MODEL_REGISTRY[args.model]
-    # args = parser.parse_args()
+    args = parser.parse_args()
     return args
 
 
