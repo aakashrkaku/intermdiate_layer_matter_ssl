@@ -20,19 +20,20 @@ usage: ssl_mocov2_mse.py [--data-path] [--batch-size] [--lamb_values] [--save-pa
 ### Finetuning SSL models and saving the intermediate features and predictions
 - Code for fine-tuning SSL models is in the following file: [`fine_tune_mocov2.py`](./fine_tune_mocov2.py)
 ```
-usage: fine_tune_mocov2.py [--ckpt_path] [--data-path] [--data_size] [--batch-size] [--save-path] [--file_extension] [--mse_btwin] [--from_scratch] [--only_ll] [--no_training]
+usage: fine_tune_mocov2.py [--ckpt-path] [--data-path] [--data-size] [--batch-size] [--save-path] [--file-extension] [--mse-btwin] [--from-scratch] [--only-ll] [--no-training] [--max-epochs]
 
   arguments:
-    --ckpt_path                  path to the ssl check point model used of intializing wts. of the model (not required for models trained from scratch)
+    --ckpt-path                  path to the ssl check point model used of intializing wts. of the model (not required for models trained from scratch)
     --data-path                  path to data directory (required)
-    --data_size                  fraction of data, 1 means 100% and 0.01 means 1% (default = 1)
+    --data-size                  fraction of data, 1 means 100% and 0.01 means 1% (default = 1)
     --batch-size                 train batch size (default: 32)
     --save-path                  path to saving model directory (required)
-    --file_extension             any file extensions you want to add to the model saving file name (default: None)
-    --mse_btwin                  could be one of 'moco-mse', 'moco-btwin' or 'moco-only' (default = None)
-    --from_scratch               if true then a fully supervised model with random intialization will be trained (defualt = False)
-    --only_ll                    if true, then it will only train the last linear layer (rest of the network would be freezed) (default = False)
-    --no_training                if true, then models would not be fine-tuned (default = False)
+    --file-extension             any file extensions you want to add to the model saving file name (default: None)
+    --mse-btwin                  could be one of 'moco-mse', 'moco-btwin' or 'moco-only' (default = None)
+    --from-scratch               if true then a fully supervised model with random intialization will be trained (defualt = False)
+    --only-ll                    if true, then it will only train the last linear layer (rest of the network would be freezed) (default = False)
+    --no-training                if true, then models would not be fine-tuned (default = False)
+    --max-epochs                 Max epochs (default = 100)
 ```
 This will have an output file which would be a dictionary that has intermediate features, predictions, ground truth labels, mean performance (with 95% confidence limits) for the test set. The name of dictionary would end with `_preds.p`.
 
