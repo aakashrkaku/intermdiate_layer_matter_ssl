@@ -91,7 +91,7 @@ class BaselineDataModule(pl.LightningDataModule):
 #                           sampler=weighted_sampler, 
                           batch_size=self.batch_size, 
                           num_workers=self.num_workers,
-#                           drop_last =True,
+                          drop_last =True,
                           pin_memory=True)
     
     def val_dataloader(self):
@@ -99,7 +99,7 @@ class BaselineDataModule(pl.LightningDataModule):
                           shuffle=False,
                           batch_size=self.batch_size, 
                           num_workers=self.num_workers,
-#                           drop_last = True,
+                          drop_last = True,
                           pin_memory = True)
 
     
@@ -108,7 +108,7 @@ class BaselineDataModule(pl.LightningDataModule):
                   batch_size = self.batch_size, 
                   num_workers= self.num_workers,
                   shuffle = False,
-#                   drop_last = True,
+                  drop_last = True,
                   pin_memory = True)
     
     def num_classes(self):
@@ -425,7 +425,7 @@ class Moco_v2(pl.LightningModule):
             if self.trainer.use_ddp or self.trainer.use_ddp2:
                 img_k, idx_unshuffle = self._batch_shuffle_ddp(img_k)
 
-            k(k1,k2,k3,k4) = self.encoder_k(img_k)  # keys: NxC
+            k, (k1,k2,k3,k4) = self.encoder_k(img_k)  # keys: NxC
             k = nn.functional.normalize(k, dim=1)
 
             # undo shuffle
@@ -519,12 +519,12 @@ class Moco_v2(pl.LightningModule):
         return optimizer
     
 def main(args):
-    dm = BaselineDataModule(data_path = args.data_path,num_workers=40, \
+    dm = BaselineDataModule(data_dir = args.data_path,num_workers=40, \
                    batch_size=args.batch_size) 
     
-    data_module.train_transforms = Moco2TrainTransformsDR(height=299)
-    data_module.val_transforms = Moco2EvalTransformsDR(height=299)
-    data_module.test_transforms = Moco2EvalTransformsDR(height=299)
+    dm.train_transforms = Moco2TrainTransformsDR(height=299)
+    dm.val_transforms = Moco2EvalTransformsDR(height=299)
+    dm.test_transforms = Moco2EvalTransformsDR(height=299)
     
     model = Moco_v2(datamodule=dm, lamb_values = args.lamb_values)
     
